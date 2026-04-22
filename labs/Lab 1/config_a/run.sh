@@ -9,8 +9,9 @@ set -e
 # Automatically extract the current directory name (e.g., "config_A_minimal")
 APP_NAME=$(basename "$PWD")
 
-# Absolute path to the NEORV32 core (adjusted for your Dev Container)
-NEORV_DIR="/workspaces/DHWA_Project_and_Labs/neorv32-setups/neorv32"
+# Relative path to the NEORV32 core
+# Saliamo di 3 directory (da labs/Lab 1/config_a a root) e scendiamo in neorv32-setups/neorv32
+NEORV_DIR="../../../neorv32-setups/neorv32"
 TARGET_SW_DIR="$NEORV_DIR/sw/example/$APP_NAME"
 
 # ==============================================================================
