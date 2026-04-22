@@ -1,5 +1,6 @@
 {
     "editor.formatOnSave": true,
+    "git.autoRepositoryDetection": false,
     "verilog.linting.linter": "verilator",
     "verilog.languageServer.veribleVerilogLs.enabled": true,
     "verilog.formatting.verilogHDL.formatter": "verible-verilog-format",

@@ -24,3 +24,6 @@ Gowin_*
 
 # compiled riscv toolchain
 riscv32-gnu-toolchain.tar.gz
+
+# neorv32-setups folder (it is downloaded automatically when loading the container)
+neorv32-setups/

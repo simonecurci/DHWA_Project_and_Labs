@@ -1,9 +1,9 @@
 {
-  "name": "Hardware Dev",
+  "name": "DHWA Docker",
   "image": "ubuntu:jammy",
   "runArgs": [
     "--name",
-    "hardware-dev",
+    "dhwa-docker",
     "--platform=linux/amd64"
   ],
   "remoteEnv": {
