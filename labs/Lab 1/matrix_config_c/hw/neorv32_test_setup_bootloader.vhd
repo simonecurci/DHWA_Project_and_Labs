@@ -50,10 +50,12 @@ begin
     BOOT_MODE_SELECT => 0,                 -- boot via internal bootloader
     -- RISC-V CPU Extensions --
     RISCV_ISA_C      => true,              -- implement compressed extension?
-    RISCV_ISA_M      => false,              -- implement mul/div extension?
+    RISCV_ISA_M      => true,              -- implement mul/div extension?
     RISCV_ISA_Zicntr => true,              -- implement base counters?
     -- Caches --
-    ICACHE_EN        => false,             -- implement instruction cache
+    ICACHE_EN        => true,              -- implement instruction cache
+    ICACHE_NUM_BLOCKS => 4,                -- number of cache blocks
+    ICACHE_BLOCK_SIZE => 64,               -- cache block size
     DCACHE_EN        => false,             -- implement data cache
     -- Internal Instruction memory --
     IMEM_EN          => true,              -- implement processor-internal instruction memory

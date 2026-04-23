@@ -19,11 +19,11 @@ TARGET_SW_DIR="$NEORV_DIR/sw/example/$APP_NAME"
 # ==============================================================================
 ACTION=$1
 
-if [ "$ACTION" != "sim" ] && [ "$ACTION" != "compile" ]; then
+if [ "$ACTION" != "simulate" ] && [ "$ACTION" != "compile" ]; then
     echo "❌ Error: Invalid or missing command."
     echo "Usage:"
-    echo "  ./run.sh sim     -> Compiles C code, updates VHDL, and runs GHDL simulation."
-    echo "  ./run.sh compile -> Compiles C code and copies imem_image.vhd to the local hw/ folder."
+    echo "  ./run.sh simulate -> Compiles C code, updates VHDL, and runs GHDL simulation."
+    echo "  ./run.sh compile  -> Compiles C code and copies imem_image.vhd to the local hw/ folder."
     exit 1
 fi
 
@@ -74,7 +74,7 @@ fi
 # ==============================================================================
 cd "$TARGET_SW_DIR"
 
-if [ "$ACTION" == "sim" ]; then
+if [ "$ACTION" == "simulate" ]; then
     echo ""
     echo ">> 2. Compiling C Code & Starting Simulation (UART0_SIM_MODE)..."
     # This compiles the C code and triggers the GHDL simulation script automatically
