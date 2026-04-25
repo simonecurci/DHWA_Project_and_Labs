@@ -27,8 +27,14 @@ APP_SRC = main.c
 #APP_SRC += $(wildcard ./*.c)
 #APP_INC += -I .
 
-# Set path to NEORV32 root directory
-NEORV32_HOME ?= ../../..
+
+# ==============================================================================
+# NEORV32 PATH CONFIGURATION
+# ==============================================================================
+# Set path to NEORV32 root directory. 
+# The "?=" allows the run.sh bash script to override this variable automatically.
+# Fallback relative path is provided just in case you run "make" manually.
+NEORV32_HOME ?= ../../../neorv32-setups/neorv32
 
 # Include the main NEORV32 makefile
 include $(NEORV32_HOME)/sw/common/common.mk
