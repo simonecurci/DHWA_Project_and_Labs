@@ -47,7 +47,7 @@ begin
     -- Clocking --
     CLOCK_FREQUENCY  => CLOCK_FREQUENCY,   -- clock frequency of clk_i in Hz
     -- Boot Configuration --
-    BOOT_MODE_SELECT => 0,                 -- boot via internal bootloader
+    BOOT_MODE_SELECT => 2,                 -- boot via internal bootloader
     -- RISC-V CPU Extensions --
     RISCV_ISA_C      => true,              -- implement compressed extension?
     RISCV_ISA_M      => false,             -- implement mul/div extension?
