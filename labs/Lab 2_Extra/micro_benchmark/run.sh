@@ -46,11 +46,6 @@ cleanup() {
     done
     echo "   [✔] Custom and testbench files removed from NEORV32 tree."
 
-    # Remove the custom RTL directory if it is empty
-    if [ -d "$NEORV_DIR/rtl/custom" ]; then
-        rmdir "$NEORV_DIR/rtl/custom" 2>/dev/null || true
-    fi
-
     # Remove the temporary software compilation folder
     if [ -d "$TARGET_SW_DIR" ]; then
         rm -rf "$TARGET_SW_DIR"
@@ -86,9 +81,6 @@ echo "================================================================"
 # ==============================================================================
 
 echo ">> 1. Preparing the hardware environment..."
-
-# Pre-create the custom RTL directory
-mkdir -p "$NEORV_DIR/rtl/custom"
 
 # Process hardware files if the local 'hw' directory exists and is not empty
 if [ -d "$PROJECT_DIR/hw" ] && [ "$(ls -A "$PROJECT_DIR/hw")" ]; then
@@ -136,30 +128,11 @@ if [ -d "$PROJECT_DIR/hw" ] && [ "$(ls -A "$PROJECT_DIR/hw")" ]; then
 
         # CATEGORY 4: New Custom Modules
         else
-            DEST="$NEORV_DIR/rtl/custom/$filename"
+            DEST="$NEORV_DIR/rtl/core/$filename"
             cp "$file" "$DEST"
             ADDED_FILES+=("$DEST")
 
-            echo "   [+] Custom RTL -> rtl/custom/$filename"
-
-            # Safely inject the new module into the GHDL simulation script
-            GHDL_SCRIPT="$NEORV_DIR/sim/ghdl.sh"
-
-            if [ -f "$GHDL_SCRIPT" ]; then
-                # Backup the script only if it hasn't been backed up yet
-                if [ ! -f "$BACKUP_DIR/sim/ghdl.sh" ]; then
-                    mkdir -p "$BACKUP_DIR/sim"
-                    cp "$GHDL_SCRIPT" "$BACKUP_DIR/sim/"
-                fi
-
-                # Inject the compilation command only if it isn't already present
-                if ! grep -q "$filename" "$GHDL_SCRIPT"; then
-                    # Using sed -i.bak for cross-platform compatibility (Linux/macOS)
-                    sed -i.bak "/neorv32_test_setup_approm.vhd/i ghdl -a \$GHDL_FLAGS ../rtl/custom/$filename" "$GHDL_SCRIPT"
-                    rm -f "${GHDL_SCRIPT}.bak"
-                    echo "       -> Auto-injected compilation command into sim/ghdl.sh"
-                fi
-            fi
+            echo "   [+] Custom RTL -> rtl/core/$filename"
         fi
     done
 else
