@@ -1,104 +1,216 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status
+# Exit immediately if any command exits with a non-zero status
 set -e
 
 # ==============================================================================
 # PATH CONFIGURATION
 # ==============================================================================
-# Automatically extract the current directory name (e.g., "config_A_minimal")
-APP_NAME=$(basename "$PWD")
 
-# Relative path to the NEORV32 core
-# Saliamo di 3 directory (da labs/Lab 1/config_a a root) e scendiamo in neorv32-setups/neorv32
-NEORV_DIR="../../../neorv32-setups/neorv32"
+# Absolute path of THIS script's directory (independent of the execution context)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_DIR="$SCRIPT_DIR"
+APP_NAME="$(basename "$PROJECT_DIR")"
+
+# Resolve the absolute path to the NEORV32 repository (assuming fixed relative structure)
+NEORV_DIR="$(cd "$PROJECT_DIR/../../../neorv32-setups/neorv32" && pwd)"
 TARGET_SW_DIR="$NEORV_DIR/sw/example/$APP_NAME"
+
+# ==============================================================================
+# BACKUP & CLEANUP SYSTEM (TRAP)
+# ==============================================================================
+
+BACKUP_DIR=$(mktemp -d)
+ADDED_FILES=()
+
+cleanup() {
+    # Prevent the cleanup function from running multiple times
+    trap - EXIT INT TERM HUP
+
+    echo ""
+    echo "================================================================"
+    echo "CLEANUP: Restoring original state & removing temporary files..."
+    echo "================================================================"
+    
+    # Restore modified core files from backup
+    if [ -d "$BACKUP_DIR" ] && [ "$(find "$BACKUP_DIR" -mindepth 1 -print -quit)" ]; then
+        cp -a "$BACKUP_DIR"/. "$NEORV_DIR"/ 2>/dev/null || true
+        echo "   [✔] Original core and simulation files restored."
+    fi
+    rm -rf "$BACKUP_DIR"
+
+    # Delete files that were dynamically added to the repository
+    for f in "${ADDED_FILES[@]}"; do
+        rm -f "$f"
+    done
+    echo "   [✔] Custom and testbench files removed from NEORV32 tree."
+
+    # Remove the custom RTL directory if it is empty
+    if [ -d "$NEORV_DIR/rtl/custom" ]; then
+        rmdir "$NEORV_DIR/rtl/custom" 2>/dev/null || true
+    fi
+
+    # Remove the temporary software compilation folder
+    if [ -d "$TARGET_SW_DIR" ]; then
+        rm -rf "$TARGET_SW_DIR"
+        echo "   [✔] Temporary software folder removed."
+    fi
+
+    echo ">> Workspace is clean."
+}
+
+# Trigger the cleanup function on normal exit, CTRL+C, termination, or hang up
+trap cleanup EXIT INT TERM HUP
 
 # ==============================================================================
 # ARGUMENT CHECK
 # ==============================================================================
+
 ACTION=$1
 
-if [ "$ACTION" != "sim" ] && [ "$ACTION" != "compile" ]; then
-    echo "❌ Error: Invalid or missing command."
+if [ "$ACTION" != "simulate" ] && [ "$ACTION" != "compile" ]; then
+    echo "Error: Invalid or missing command."
     echo "Usage:"
-    echo "  ./run.sh simulate -> Compiles C code, updates VHDL, and runs GHDL simulation."
-    echo "  ./run.sh compile  -> Compiles C code and copies imem_image.vhd to the local hw/ folder."
+    echo "  ./run.sh simulate -> Compile the C code and run the GHDL simulation."
+    echo "  ./run.sh compile  -> Compile the C code and export memory images to hw/."
     exit 1
 fi
 
-echo "========================================================"
-echo "🚀 STARTING WORKFLOW FOR: $APP_NAME ($ACTION)"
-echo "========================================================"
+echo "================================================================"
+echo "STARTING WORKFLOW ($ACTION) FOR: $APP_NAME"
+echo "================================================================"
 
 # ==============================================================================
-# PHASE 1: HARDWARE & SOFTWARE SYNCHRONIZATION
+# PHASE 1: HARDWARE SYNCHRONIZATION
 # ==============================================================================
-echo ">> 1. Preparing the environment..."
 
-# Create the temporary application folder in the NEORV32 tree and clean it
-mkdir -p "$TARGET_SW_DIR"
-rm -rf "$TARGET_SW_DIR"/*
+echo ">> 1. Preparing the hardware environment..."
 
-# Copy the software files (main.c, Makefile)
-if [ -d "sw" ] && [ "$(ls -A sw)" ]; then
-    cp sw/* "$TARGET_SW_DIR"/
-    echo "   [+] Copied Software files -> sw/example/$APP_NAME/"
-else
-    echo "   [!] Warning: 'sw' folder is empty or missing."
-fi
+# Pre-create the custom RTL directory
+mkdir -p "$NEORV_DIR/rtl/custom"
 
-# Copy the hardware files to their respective target directories
-if [ -d "hw" ] && [ "$(ls -A hw)" ]; then
-    for file in hw/*.vhd; do
-        # Skip if no VHDL files are found
-        [ -e "$file" ] || continue 
-        
+# Process hardware files if the local 'hw' directory exists and is not empty
+if [ -d "$PROJECT_DIR/hw" ] && [ "$(ls -A "$PROJECT_DIR/hw")" ]; then
+    for file in "$PROJECT_DIR"/hw/*.vhd; do
+        [ -e "$file" ] || continue
         filename=$(basename "$file")
         
+        # CATEGORY 1: Testbenches
         if [[ "$filename" == *"_tb.vhd" ]]; then
-            cp "$file" "$NEORV_DIR/sim/"
-            echo "   [+] Copied Testbench: $filename -> sim/"
-        elif [[ "$filename" == "neorv32_test_setup_"* ]]; then
-            cp "$file" "$NEORV_DIR/rtl/test_setups/"
-            echo "   [+] Copied Test Setup: $filename -> rtl/test_setups/"
+            DEST="$NEORV_DIR/sim/$filename"
+
+            if [ -f "$DEST" ]; then
+                mkdir -p "$BACKUP_DIR/sim"
+                cp "$DEST" "$BACKUP_DIR/sim/"
+            else
+                ADDED_FILES+=("$DEST")
+            fi
+
+            cp "$file" "$DEST"
+            echo "   [+] Testbench -> sim/$filename"
+
+        # CATEGORY 2: Test Setups (Top-Level Wrappers)
+        elif [[ "$filename" == neorv32_test_setup_* ]]; then
+            DEST="$NEORV_DIR/rtl/test_setups/$filename"
+
+            if [ -f "$DEST" ]; then
+                mkdir -p "$BACKUP_DIR/rtl/test_setups"
+                cp "$DEST" "$BACKUP_DIR/rtl/test_setups/"
+            else
+                ADDED_FILES+=("$DEST")
+            fi
+
+            cp "$file" "$DEST"
+            echo "   [+] Test setup -> rtl/test_setups/$filename"
+
+        # CATEGORY 3: Core File Overrides (e.g., neorv32_cfs.vhd)
+        elif [ -f "$NEORV_DIR/rtl/core/$filename" ]; then
+            DEST="$NEORV_DIR/rtl/core/$filename"
+
+            mkdir -p "$BACKUP_DIR/rtl/core"
+            cp "$DEST" "$BACKUP_DIR/rtl/core/"
+
+            cp "$file" "$DEST"
+            echo "   [+] Core override -> rtl/core/$filename"
+
+        # CATEGORY 4: New Custom Modules
         else
-            cp "$file" "$NEORV_DIR/rtl/core/"
-            echo "   [+] Copied Core RTL: $filename -> rtl/core/"
+            DEST="$NEORV_DIR/rtl/custom/$filename"
+            cp "$file" "$DEST"
+            ADDED_FILES+=("$DEST")
+
+            echo "   [+] Custom RTL -> rtl/custom/$filename"
+
+            # Safely inject the new module into the GHDL simulation script
+            GHDL_SCRIPT="$NEORV_DIR/sim/ghdl.sh"
+
+            if [ -f "$GHDL_SCRIPT" ]; then
+                # Backup the script only if it hasn't been backed up yet
+                if [ ! -f "$BACKUP_DIR/sim/ghdl.sh" ]; then
+                    mkdir -p "$BACKUP_DIR/sim"
+                    cp "$GHDL_SCRIPT" "$BACKUP_DIR/sim/"
+                fi
+
+                # Inject the compilation command only if it isn't already present
+                if ! grep -q "$filename" "$GHDL_SCRIPT"; then
+                    # Using sed -i.bak for cross-platform compatibility (Linux/macOS)
+                    sed -i.bak "/neorv32_test_setup_approm.vhd/i ghdl -a \$GHDL_FLAGS ../rtl/custom/$filename" "$GHDL_SCRIPT"
+                    rm -f "${GHDL_SCRIPT}.bak"
+                    echo "       -> Auto-injected compilation command into sim/ghdl.sh"
+                fi
+            fi
         fi
     done
+else
+    echo "   [i] No VHDL files found in local hw/ directory. Proceeding with default hardware."
 fi
 
 # ==============================================================================
-# PHASE 2: EXECUTION (SIM vs COMPILE)
+# PHASE 2: SOFTWARE PREPARATION
 # ==============================================================================
+
+# Verify the local software directory and Makefile exist
+if [ ! -d "$PROJECT_DIR/sw" ] || { [ ! -f "$PROJECT_DIR/sw/Makefile" ] && [ ! -f "$PROJECT_DIR/sw/makefile" ]; }; then
+    echo "Error: Local 'sw' directory or Makefile not found."
+    exit 1
+fi
+
+echo ">> 2. Deploying software to the build environment..."
+mkdir -p "$TARGET_SW_DIR"
+cp -a "$PROJECT_DIR"/sw/* "$TARGET_SW_DIR"/
+
+# Navigate to the target build directory
 cd "$TARGET_SW_DIR"
+
+# ==============================================================================
+# PHASE 3: EXECUTION
+# ==============================================================================
 
 if [ "$ACTION" == "simulate" ]; then
     echo ""
-    echo ">> 2. Compiling C Code & Starting Simulation (UART0_SIM_MODE)..."
-    # This compiles the C code and triggers the GHDL simulation script automatically
+    echo ">> 3. Building executable and launching simulation..."
     make USER_FLAGS+=-DUART0_SIM_MODE clean_all install sim
 
 elif [ "$ACTION" == "compile" ]; then
     echo ""
-    echo ">> 2. Compiling C Code & Generating VHDL Memory Images..."
+    echo ">> 3. Building executable and generating memory images..."
     make clean_all install
 
     echo ""
-    echo ">> 3. Retrieving generated images..."
-    # Navigate back to the local project folder
-    cd - > /dev/null
+    echo ">> 4. Retrieving generated VHDL images..."
+    cp "$NEORV_DIR/rtl/core/neorv32_imem_image.vhd" "$PROJECT_DIR/hw/"
     
-    # Copy the generated VHDL memory files back to the local hw/ directory
-    cp "$NEORV_DIR/rtl/core/neorv32_imem_image.vhd" "./hw/"
-    
-    # Also copy dmem_image if it was generated (ignoring errors if it wasn't)
-    # cp "$NEORV_DIR/rtl/core/neorv32_dmem_image.vhd" "./hw/" 2>/dev/null || true 
-    
-    echo "   [+] Saved: hw/neorv32_imem_image.vhd is ready for Gowin EDA synthesis!"
+    # Safely attempt to copy the DMEM image if the compilation generated one
+    cp "$NEORV_DIR/rtl/core/neorv32_dmem_image.vhd" "$PROJECT_DIR/hw/" 2>/dev/null || true
+
+    echo "   [+] Hardware images successfully exported to local hw/ directory."
 fi
 
-echo "========================================================"
-echo "✅ WORKFLOW COMPLETED SUCCESSFULLY!"
-echo "========================================================"
+# Return to the initial working directory gracefully
+cd "$PROJECT_DIR"
+
+echo "================================================================"
+echo "WORKFLOW EXECUTED SUCCESSFULLY!"
+echo "================================================================"
+# The trap function 'cleanup' will run automatically after this point.
